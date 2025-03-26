@@ -6,6 +6,8 @@ import json
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import re
+import csv
+
 
 
 app = Flask(__name__)
@@ -82,45 +84,76 @@ def load_data(doi_list, input_dir="results", data_type="citations"):
 
 
 
-def create_graph_from_files(doi_list, input_dir="results"):
+def create_graph_from_files(doi_list, bibliometric_data, citations_data, references_data):
     G = nx.DiGraph()
-
-    bibliometric_data = load_data(doi_list, input_dir, "meta")
-    citations_data = load_data(doi_list, input_dir, "citations")
-    references_data = load_data(doi_list, input_dir, "references")
+    node_mapping = {}
+    counter = 1
 
     for doi in doi_list:
-        if doi not in G:
+        if doi not in node_mapping:
+            node_mapping[doi] = counter
+            counter += 1
             meta = bibliometric_data.get(doi, [])
-            if meta:
-                title = meta[0].get("title", "")
-                authors = meta[0].get("author", "")
-                year = meta[0].get("pub_date", "")
-                G.add_node(doi, label=title, authors=authors, year=year)
+            title = meta[0].get("title", "") if meta else ""
+            authors = meta[0].get("author", "") if meta else ""
+            year = meta[0].get("pub_date", "") if meta else ""
+            G.add_node(node_mapping[doi], label=title, authors=authors, year=year, seed=True)
 
         if doi in citations_data:
             for citation in citations_data[doi]:
                 citing_doi = extract_doi(citation.get('citing', ''))
-                if citing_doi and citing_doi not in G:
-                    G.add_node(citing_doi)
-                if citing_doi:
-                    G.add_edge(citing_doi, doi, type="incoming")
+                if citing_doi not in node_mapping:
+                    node_mapping[citing_doi] = counter
+                    counter += 1
+                    meta = bibliometric_data.get(citing_doi, [])
+                    title = meta[0].get("title", "") if meta else ""
+                    authors = meta[0].get("author", "") if meta else ""
+                    year = meta[0].get("pub_date", "") if meta else ""
+                    G.add_node(node_mapping[citing_doi], label=title, authors=authors, year=year, seed=False)
+                G.add_edge(node_mapping[doi], node_mapping[citing_doi])
+
 
         if doi in references_data:
             for reference in references_data[doi]:
                 cited_doi = extract_doi(reference.get('cited', ''))
-                if cited_doi and cited_doi not in G:
-                    G.add_node(cited_doi)
-                if cited_doi:
-                    G.add_edge(doi, cited_doi, type="outgoing")
+                if cited_doi not in node_mapping:
+                    node_mapping[cited_doi] = counter
+                    counter += 1
+                    meta = bibliometric_data.get(cited_doi, [])
+                    title = meta[0].get("title", "") if meta else ""
+                    authors = meta[0].get("author", "") if meta else ""
+                    year = meta[0].get("pub_date", "") if meta else ""
+                    G.add_node(node_mapping[cited_doi], label=title, authors=authors, year=year, seed=False)
+                G.add_edge(node_mapping[doi], node_mapping[cited_doi])
 
-    return G
+
+    return G, node_mapping
+
 
 def export_graph_to_gexf(G, output_dir="results"):
     if not os.path.exists(output_dir):
         os.makedirs(output_dir)
     gexf_path = os.path.join(output_dir, "citation_graph.gexf")
     nx.write_gexf(G, gexf_path)
+
+def export_graph_to_csv(G, node_mapping, output_dir="results"):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
+
+    node_file = os.path.join(output_dir, "nodes.csv")
+    edge_file = os.path.join(output_dir, "edges.csv")
+
+    with open(node_file, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Id", "Label", "Authors", "Year", "Seed"])
+        for node, data in G.nodes(data=True):
+            writer.writerow([node, data.get("label", ""), data.get("authors", ""), data.get("year", ""), data.get("seed", False)])
+
+    with open(edge_file, 'w', newline='', encoding='utf-8') as f:
+        writer = csv.writer(f)
+        writer.writerow(["Source", "Target"])
+        for source, target in G.edges():
+            writer.writerow([source, target])
 
 def main():
 
@@ -135,12 +168,33 @@ def main():
                 "10.1145/3357384.3358153", "10.1109/ACCESS.2022.3190088", "10.1145/3219819.3219859", 
                 "10.1007/s11192-022-04426-2", "10.1007/978-3-031-16802-4_16"]
     
+    #get_citations_and_references(doi_list) 
 
-    #get_bibliometric_data(doi_list)
-    #get_citations_and_references(doi_list)
+    all_dois = set(doi_list)
+
+    citations_data = load_data(doi_list, "results", "citations")
+    references_data = load_data(doi_list, "results", "references")
+
+    for doi in doi_list:
+        if doi in citations_data:
+            for citation in citations_data[doi]:
+                citing_doi = extract_doi(citation.get('citing', ''))
+                if citing_doi:
+                    all_dois.add(citing_doi)
+
+        if doi in references_data:
+            for reference in references_data[doi]:
+                cited_doi = extract_doi(reference.get('cited', ''))
+                if cited_doi:
+                    all_dois.add(cited_doi)
+
     
-    G = create_graph_from_files(doi_list)
-    export_graph_to_gexf(G)
+    #get_bibliometric_data(all_dois)
+
+    bibliometric_data = load_data(all_dois, "results", "meta")
+    G, node_mapping = create_graph_from_files(all_dois, bibliometric_data, citations_data, references_data)
+    export_graph_to_csv(G, node_mapping)
+
 
 if __name__ == "__main__":
     main()
