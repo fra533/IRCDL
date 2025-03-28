@@ -7,6 +7,7 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 import re
 import csv
+from dateutil import parser
 
 
 
@@ -16,6 +17,13 @@ def extract_doi(identifier_string):
     doi_match = re.findall(r'doi:(10\.\d{4,9}/[-._;()/:A-Za-z0-9]+)', identifier_string)
     return doi_match[0] if doi_match else None
 
+def standardize_date(date_str):
+    if not date_str:
+        return ""
+    try:
+        return parser.parse(date_str).strftime("%Y-%m-%d")
+    except Exception:
+        return ""
 
 
 def get_bibliometric_data(doi_list, output_dir="results"):
@@ -67,9 +75,9 @@ def load_data(doi_list, input_dir="results", data_type="citations"):
             with open(file_path, 'r', encoding='utf-8') as f:
                 try:
                     loaded_data = json.load(f)
-                    if isinstance(loaded_data, dict):  
-                        data[doi] = [loaded_data]  
-                    elif isinstance(loaded_data, list):  
+                    if isinstance(loaded_data, dict):
+                        data[doi] = [loaded_data]
+                    elif isinstance(loaded_data, list):
                         data[doi] = loaded_data
                     else:
                         print(f"⚠️ Formato non riconosciuto per {file_path}: {type(loaded_data)}")
@@ -80,7 +88,14 @@ def load_data(doi_list, input_dir="results", data_type="citations"):
         else:
             print(f"⚠️ File {data_type} non trovato per il DOI {doi}")
             data[doi] = []
+            
+    if data_type == "meta":
+        missing_metadata = [doi for doi in doi_list if not data.get(doi)]
+        if missing_metadata:
+            print("DOI senza metadati:", missing_metadata)
+    
     return data
+
 
 
 
@@ -94,41 +109,47 @@ def create_graph_from_files(doi_list, bibliometric_data, citations_data, referen
             node_mapping[doi] = counter
             counter += 1
             meta = bibliometric_data.get(doi, [])
-            title = meta[0].get("title", "") if meta else ""
-            authors = meta[0].get("author", "") if meta else ""
-            year = meta[0].get("pub_date", "") if meta else ""
-            G.add_node(node_mapping[doi], label=title, authors=authors, year=year, seed=True)
+            title = meta[0].get("title", "Unknown Title") if meta else "Unknown Title"
+            authors = meta[0].get("author", "Unknown Author") if meta else "Unknown Author"
+            raw_date = meta[0].get("pub_date", "") if meta else ""
+            year = standardize_date(raw_date)
+            
+
+            G.add_node(node_mapping[doi], label=title, authors=authors, year=year, seed=False, doi=doi)
 
         if doi in citations_data:
             for citation in citations_data[doi]:
                 citing_doi = extract_doi(citation.get('citing', ''))
-                if citing_doi not in node_mapping:
+                if citing_doi and citing_doi not in node_mapping:
                     node_mapping[citing_doi] = counter
                     counter += 1
                     meta = bibliometric_data.get(citing_doi, [])
-                    title = meta[0].get("title", "") if meta else ""
-                    authors = meta[0].get("author", "") if meta else ""
-                    year = meta[0].get("pub_date", "") if meta else ""
-                    G.add_node(node_mapping[citing_doi], label=title, authors=authors, year=year, seed=False)
-                G.add_edge(node_mapping[doi], node_mapping[citing_doi])
+                    title = meta[0].get("title", "Unknown Title") if meta else "Unknown Title"
+                    authors = meta[0].get("author", "Unknown Author") if meta else "Unknown Author"
+                    raw_date = meta[0].get("pub_date", "") if meta else ""
+                    year = standardize_date(raw_date)
 
+                    G.add_node(node_mapping[citing_doi], label=title, authors=authors, year=year, seed=False, doi=citing_doi)
+                if citing_doi:
+                    G.add_edge(node_mapping[doi], node_mapping[citing_doi])
 
         if doi in references_data:
             for reference in references_data[doi]:
                 cited_doi = extract_doi(reference.get('cited', ''))
-                if cited_doi not in node_mapping:
+                if cited_doi and cited_doi not in node_mapping:
                     node_mapping[cited_doi] = counter
                     counter += 1
                     meta = bibliometric_data.get(cited_doi, [])
-                    title = meta[0].get("title", "") if meta else ""
-                    authors = meta[0].get("author", "") if meta else ""
-                    year = meta[0].get("pub_date", "") if meta else ""
-                    G.add_node(node_mapping[cited_doi], label=title, authors=authors, year=year, seed=False)
-                G.add_edge(node_mapping[doi], node_mapping[cited_doi])
+                    title = meta[0].get("title", "Unknown Title") if meta else "Unknown Title"
+                    authors = meta[0].get("author", "Unknown Author") if meta else "Unknown Author"
+                    raw_date = meta[0].get("pub_date", "") if meta else ""
+                    year = standardize_date(raw_date)
 
+                    G.add_node(node_mapping[cited_doi], label=title, authors=authors, year=year, seed=False, doi=cited_doi)
+                if cited_doi:
+                    G.add_edge(node_mapping[doi], node_mapping[cited_doi])
 
     return G, node_mapping
-
 
 def export_graph_to_gexf(G, output_dir="results"):
     if not os.path.exists(output_dir):
@@ -145,9 +166,12 @@ def export_graph_to_csv(G, node_mapping, output_dir="results"):
 
     with open(node_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(["Id", "Label", "Authors", "Year", "Seed"])
+        writer.writerow(["Id", "Label", "Authors", "Year", "DOI", "Seed"])
         for node, data in G.nodes(data=True):
-            writer.writerow([node, data.get("label", ""), data.get("authors", ""), data.get("year", ""), data.get("seed", False)])
+            writer.writerow([
+                node, data.get("label", ""), data.get("authors", ""), 
+                data.get("year", ""), data.get("doi", ""), data.get("seed", False)
+            ])
 
     with open(edge_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
@@ -193,6 +217,7 @@ def main():
 
     bibliometric_data = load_data(all_dois, "results", "meta")
     G, node_mapping = create_graph_from_files(all_dois, bibliometric_data, citations_data, references_data)
+    
     export_graph_to_csv(G, node_mapping)
 
 
