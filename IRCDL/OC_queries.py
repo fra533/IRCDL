@@ -21,7 +21,7 @@ def standardize_date(date_str):
     if not date_str:
         return ""
     try:
-        return parser.parse(date_str).strftime("%Y-%m-%d")
+        return str(parser.parse(date_str).year)  # Ritorna solo l'anno
     except Exception:
         return ""
 
@@ -108,14 +108,24 @@ def create_graph_from_files(doi_list, bibliometric_data, citations_data, referen
         if doi not in node_mapping:
             node_mapping[doi] = counter
             counter += 1
-            meta = bibliometric_data.get(doi, [])
-            title = meta[0].get("title", "Unknown Title") if meta else "Unknown Title"
-            authors = meta[0].get("author", "Unknown Author") if meta else "Unknown Author"
-            raw_date = meta[0].get("pub_date", "") if meta else ""
-            year = standardize_date(raw_date)
-            
 
-            G.add_node(node_mapping[doi], label=title, authors=authors, year=year, seed=False, doi=doi)
+            meta = bibliometric_data.get(doi, [])
+            if not meta or not isinstance(meta[0], dict):  # Aggiunto controllo
+                print(f"⚠️ Metadati assenti o malformati per DOI: {doi}")
+                title = "Unknown Title"
+                authors = "Unknown Author"
+                venue = "Unknown Venue"
+                type = "Unknown Type"
+                year = ""
+            else:
+                title = meta[0].get("title", "Unknown Title")
+                authors = meta[0].get("author", "Unknown Author")
+                venue = meta[0].get("venue", "Unknown Venue")
+                type = meta[0].get("type", "Unknown Type")
+                raw_date = meta[0].get("pub_date", "")
+                year = standardize_date(raw_date)
+
+            G.add_node(node_mapping[doi], label=title, authors=authors, venue=venue, type=type, year=year, seed=False, doi=doi)
 
         if doi in citations_data:
             for citation in citations_data[doi]:
@@ -123,13 +133,25 @@ def create_graph_from_files(doi_list, bibliometric_data, citations_data, referen
                 if citing_doi and citing_doi not in node_mapping:
                     node_mapping[citing_doi] = counter
                     counter += 1
-                    meta = bibliometric_data.get(citing_doi, [])
-                    title = meta[0].get("title", "Unknown Title") if meta else "Unknown Title"
-                    authors = meta[0].get("author", "Unknown Author") if meta else "Unknown Author"
-                    raw_date = meta[0].get("pub_date", "") if meta else ""
-                    year = standardize_date(raw_date)
 
-                    G.add_node(node_mapping[citing_doi], label=title, authors=authors, year=year, seed=False, doi=citing_doi)
+                    meta = bibliometric_data.get(citing_doi, [])
+                    if not meta or not isinstance(meta[0], dict):  # Aggiunto controllo
+                        print(f"⚠️ Metadati assenti o malformati per DOI citante: {citing_doi}")
+                        title = "Unknown Title"
+                        authors = "Unknown Author"
+                        venue = "Unknown Venue"
+                        type = "Unknown Type"
+                        year = ""
+                    else:
+                        title = meta[0].get("title", "Unknown Title")
+                        authors = meta[0].get("author", "Unknown Author")
+                        venue = meta[0].get("venue", "Unknown Venue")
+                        type = meta[0].get("type", "Unknown Type")
+                        raw_date = meta[0].get("pub_date", "")
+                        year = standardize_date(raw_date)
+
+                    G.add_node(node_mapping[citing_doi], label=title, authors=authors, venue=venue, type=type, year=year, seed=False, doi=citing_doi)
+
                 if citing_doi:
                     G.add_edge(node_mapping[doi], node_mapping[citing_doi])
 
@@ -139,17 +161,30 @@ def create_graph_from_files(doi_list, bibliometric_data, citations_data, referen
                 if cited_doi and cited_doi not in node_mapping:
                     node_mapping[cited_doi] = counter
                     counter += 1
-                    meta = bibliometric_data.get(cited_doi, [])
-                    title = meta[0].get("title", "Unknown Title") if meta else "Unknown Title"
-                    authors = meta[0].get("author", "Unknown Author") if meta else "Unknown Author"
-                    raw_date = meta[0].get("pub_date", "") if meta else ""
-                    year = standardize_date(raw_date)
 
-                    G.add_node(node_mapping[cited_doi], label=title, authors=authors, year=year, seed=False, doi=cited_doi)
+                    meta = bibliometric_data.get(cited_doi, [])
+                    if not meta or not isinstance(meta[0], dict):  # Aggiunto controllo
+                        print(f"⚠️ Metadati assenti o malformati per DOI citato: {cited_doi}")
+                        title = "Unknown Title"
+                        authors = "Unknown Author"
+                        venue = "Unknown Venue"
+                        type = "Unknown Type"
+                        year = ""
+                    else:
+                        title = meta[0].get("title", "Unknown Title")
+                        authors = meta[0].get("author", "Unknown Author")
+                        venue = meta[0].get("venue", "Unknown Venue")
+                        type = meta[0].get("type", "Unknown Type")
+                        raw_date = meta[0].get("pub_date", "")
+                        year = standardize_date(raw_date)
+
+                    G.add_node(node_mapping[cited_doi], label=title, authors=authors, venue=venue, type=type, year=year, seed=False, doi=cited_doi)
+
                 if cited_doi:
                     G.add_edge(node_mapping[doi], node_mapping[cited_doi])
 
     return G, node_mapping
+
 
 def export_graph_to_gexf(G, output_dir="results"):
     if not os.path.exists(output_dir):
@@ -166,10 +201,10 @@ def export_graph_to_csv(G, node_mapping, output_dir="results"):
 
     with open(node_file, 'w', newline='', encoding='utf-8') as f:
         writer = csv.writer(f)
-        writer.writerow(["Id", "Label", "Authors", "Year", "DOI", "Seed"])
+        writer.writerow(["Id", "Label", "Authors", "Venue", "Type", "Year", "DOI", "Seed"])
         for node, data in G.nodes(data=True):
             writer.writerow([
-                node, data.get("label", ""), data.get("authors", ""), 
+                node, data.get("label", ""), data.get("authors", ""),  data.get("venue", ""),  data.get("type", ""),
                 data.get("year", ""), data.get("doi", ""), data.get("seed", False)
             ])
 
@@ -182,15 +217,12 @@ def export_graph_to_csv(G, node_mapping, output_dir="results"):
 def main():
 
 
-    doi_list = ["10.1109/ICTAI56018.2022.00043", "10.1145/3589334.3645580", "10.23919/EECSI56542.2022.9946586", 
-                "10.1109/TKDE.2020.3021256", "10.1007/s00521-020-05088-y", "10.48550/arXiv.2107.04382", 
-                "10.1109/icdm50108.2020.00060", "10.1007/978-3-030-34223-4_34", "10.1007/978-981-99-8088-8_21", 
-                "10.1007/s11390-023-2070-z", "10.18495/comengapp.v8i1.264", "10.1145/3502730", 
-                "10.1109/bigdata47090.2019.9005458", "10.1007/s13042-022-01686-5", "10.1109/icws53863.2021.00071", 
-                "10.1109/IJCNN52387.2021.9534125", "10.3390/e22040416", "10.1007/978-3-030-47426-3_29", 
-                "10.3390/app14010192", "10.1109/bigdata55660.2022.10020229", "10.1007/978-3-319-67008-9_24", 
-                "10.1145/3357384.3358153", "10.1109/ACCESS.2022.3190088", "10.1145/3219819.3219859", 
-                "10.1007/s11192-022-04426-2", "10.1007/978-3-031-16802-4_16"]
+    doi_list = ["10.1109/ICTAI56018.2022.00043","10.1145/3589334.3645580","10.23919/EECSI56542.2022.9946586","10.1109/TKDE.2020.3021256","10.1007/s00521-020-05088-y","10.48550/arXiv.2107.04382",
+    "10.1109/icdm50108.2020.00060","10.1007/978-3-030-34223-4_34","10.1007/978-981-99-8088-8_21","10.1007/s11390-023-2070-z","10.18495/comengapp.v8i1.264","10.1145/3502730",
+    "10.1109/bigdata47090.2019.9005458","10.18495/comengapp.v11i1.398","10.1007/s13042-022-01686-5","10.1109/icws53863.2021.00071","10.1109/IJCNN52387.2021.9534125","10.3390/e22040416",
+    "10.1007/978-3-030-47426-3_29","10.3390/app14010192","10.1109/bigdata55660.2022.10020229","10.1007/978-3-319-67008-9_24","10.1145/3357384.3358153","10.1109/ACCESS.2022.3190088",
+    "10.1145/3219819.3219859","10.1007/s11192-022-04426-2","10.1007/978-3-031-16802-4_16"]
+
     
     #get_citations_and_references(doi_list) 
 
