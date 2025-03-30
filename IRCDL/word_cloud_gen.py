@@ -8,7 +8,7 @@ import os
 file_path = r"C:\Users\franc\OneDrive - Alma Mater Studiorum Università di Bologna\Desktop\IRCDL\data\communities - Foglio2.csv"
 df = pd.read_csv(file_path)
 
-communities = df['Community'].unique()
+communities = df['Cluster'].unique()
 colors = sns.color_palette("husl", len(communities))
 community_colors = {community: colors[i] for i, community in enumerate(communities)}
 
@@ -25,7 +25,7 @@ rows = math.ceil(len(communities) / cols)
 plt.figure(figsize=(cols * 5, rows * 5))
 
 for i, community in enumerate(communities, 1):
-    words = ' '.join(df[df['Community'] == community]['Word'])
+    words = ' '.join(df[df['Cluster'] == community]['Label'])
     wc = generate_word_cloud(words, community_colors[community])
     plt.subplot(rows, cols, i)
     plt.imshow(wc, interpolation='bilinear')
