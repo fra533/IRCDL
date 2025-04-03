@@ -17,6 +17,11 @@ def extract_doi(identifier_string):
     doi_match = re.findall(r'doi:(10\.\d{4,9}/[-._;()/:A-Za-z0-9]+)', identifier_string)
     return doi_match[0] if doi_match else None
 
+def extract_openalex(venue_string):
+    match = re.search(r'openalex:([a-zA-Z0-9]+)', venue_string)
+    return match.group(1) if match else "Unknown Venue"
+
+
 def standardize_date(date_str):
     if not date_str:
         return ""
@@ -120,7 +125,8 @@ def create_graph_from_files(doi_list, bibliometric_data, citations_data, referen
             else:
                 title = meta[0].get("title", "Unknown Title")
                 authors = meta[0].get("author", "Unknown Author")
-                venue = meta[0].get("venue", "Unknown Venue")
+                venue_string = meta[0].get("venue", "Unknown Venue")
+                venue = extract_openalex(venue_string)
                 type = meta[0].get("type", "Unknown Type")
                 raw_date = meta[0].get("pub_date", "")
                 year = standardize_date(raw_date)
@@ -145,7 +151,8 @@ def create_graph_from_files(doi_list, bibliometric_data, citations_data, referen
                     else:
                         title = meta[0].get("title", "Unknown Title")
                         authors = meta[0].get("author", "Unknown Author")
-                        venue = meta[0].get("venue", "Unknown Venue")
+                        venue_string = meta[0].get("venue", "Unknown Venue")
+                        venue = extract_openalex(venue_string)
                         type = meta[0].get("type", "Unknown Type")
                         raw_date = meta[0].get("pub_date", "")
                         year = standardize_date(raw_date)
@@ -173,7 +180,8 @@ def create_graph_from_files(doi_list, bibliometric_data, citations_data, referen
                     else:
                         title = meta[0].get("title", "Unknown Title")
                         authors = meta[0].get("author", "Unknown Author")
-                        venue = meta[0].get("venue", "Unknown Venue")
+                        venue_string = meta[0].get("venue", "Unknown Venue")
+                        venue = extract_openalex(venue_string)
                         type = meta[0].get("type", "Unknown Type")
                         raw_date = meta[0].get("pub_date", "")
                         year = standardize_date(raw_date)
